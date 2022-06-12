@@ -1,0 +1,522 @@
+---
+title: "El uso del tiempo en EEUU desde una perspectiva socioeconómica"
+author: 'Autor: Víctor Custodio Ruiz'
+date: "Junio 2022"
+output: 
+  html_document:
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# ¿Somos lo que hacemos con nuestro tiempo?
+
+Uno de los aspectos que mejor definen quienes somos y cómo vivimos es la forma en la que dividimos y empleamos el tiempo que tenemos. Cada día partimos de 1440 minutos que tendremos que ir repartiendo entre ciertas tareas. Desde aquellas que consideramos necesarias, como comer o dormir, las que resultan obligatorias, trabajar o ir a clase, hasta las que podemos denominar como "tiempo libre": nuestros hobbies, el tiempo que pasamos relacionándonos con los demás en persona, en las redes sociales, o incluso descansando.
+
+Pero, ¿es el uso de nuestro tiempo una decisión personal, completamente individual, o, más bien, el reflejo de ciertas condiciones vitales, sociales o económicas subyacentes? Dentro de la dificultad para separar dichos ámbitos, sí que podemos al menos intuir que debe de haber ciertos factores que influyan en la forma en la que repartimos nuestro tiempo,y que vayan más allá de lo que interpretamos como decisiones puramente personales.
+
+Para analizar está cuestión: la influencia de nuestro contexto y nuestras condiciones socioeconómicas en el uso de nuestro tiempo, algo determinante para entender nuestra vida e identidad, vamos a emplear un conjunto de datos sobre el uso que hacen del tiempo poblaciones de diferentes características. El estudio de este fenómeno es potencialmente inabarcable, especialmente si tenemos en cuenta el periodo de tiempo que queremos analizar o su situación geográfica. En este caso nos centraremos en la información de EEUU durante el comienzo del siglo XXI. En cualquier caso, consideramos que las conclusiones que obtengamos más allá de reflejar ciertas particularidades propias del país, pueden ser también representativas de otras zonas con una situación socioeconómica similar, como pueda ser Europa, y ciertas áreas de otros continentes.
+
+# Datos empleados
+
+Para este estudio hemos partido de la información sobre uso del tiempo en EEUU recogida mediante la ["American Time Use Survey"](https://www.atusdata.org/atus/about_atus.shtml) (ATUS) llevada a cabo por el U.S. Bureau of Labor Statistics y el U.S. Census Bureau desde 2003. Para ello hemos empleado el ATUS Extract Builder, herramienta online implementada en la página web enlazada, que permite escoger las variables a extraer dentro de un periodo determinado.
+
+En nuestro caso emplearemos como fuente de datos fundamentalmente el periodo que va desde 2003 a 2019. Aunque ya se cuenta con los datos de 2020, las particularidades de este año debidas a la pandemia de Covid-19, (la cual llevó incluso a cancelar la recolección de datos durante cierto periodo del año) y que, indudablemente, modificó el reparto de uso diario, nos hacen excluir este año de los datos de partida, al merecer un estudio por separado.
+
+Este set de datos contiene fundamentalmente información sobre los individuos que responden a la encuesta (su edad, género, lugar donde viven, ingresos, raza, etc.), junto con el reparto de tiempo diario que dedican a ciertos ámbitos como el cuidado personal, incluidas las horas de sueño, el tiempo trabajando, dedicado al ocio o relaciones sociales, comiendo, cuidando de otros familiares, etc. Lo que permitirá visualizar la relación entre las características de ciertos grupos poblaciones y la forma en la que emplean su tiempo.
+
+
+# Carga y exploración de los datos
+
+En primer lugar instalamos las librerías que serán necesarias:
+
+```{r}
+#install.packages("ipumsr", repos = "http://cran.us.r-project.org")
+#install.packages("dplyr", repos = "http://cran.us.r-project.org")
+#install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+#install.packages("stringr", repos = "http://cran.us.r-project.org")
+#install.packages("purrr", repos = "http://cran.us.r-project.org")
+#install.packages("DT", repos = "http://cran.us.r-project.org")
+#install.packages("sf", repos = "http://cran.us.r-project.org")
+#install.packages("chron", repos = "http://cran.us.r-project.org")
+#install.packages("sf", repos = "http://cran.us.r-project.org")
+#install.packages("forcats", repos = "http://cran.us.r-project.org")
+#install.packages("tidyr", repos = "http://cran.us.r-project.org")
+#install.packages("treemap", repos = "http://cran.us.r-project.org")
+#install.packages("gmodels", repos = "http://cran.us.r-project.org")
+```
+Cargamos también algunas las librerías que emplearemos durante el proyecto:
+
+```{r message=FALSE, warning=FALSE}
+library(forcats)
+library(dplyr)
+library(ggplot2)
+library(purrr)
+library(sf)
+library(chron)
+library(tidyr)
+library(treemap)
+library(gmodels)
+```
+
+Merece la pena mencionar aparte que vamos a emplear la librería "ipumsr", que ha sido desarrollada por los propios gestores del repositorio de datos de ATUS, para facilitar las tareas de tratamiento de los datos:
+
+```{r message=FALSE, warning=FALSE}
+library(ipumsr)
+```
+
+En primer lugar, y tras haber hecho la selección y descarga de los datos desde [ATUS-X](https://www.atusdata.org/atus-action/variables/group), haremos la carga de la información en R:
+
+```{r}
+ddi <- read_ipums_ddi("atus_00004.xml")
+data <- read_ipums_micro(ddi)
+```
+
+Vemos el contenido cargado:
+
+```{r}
+head(data)
+```
+
+En este caso es importante observar que la carga se hace a través de un xml, que se genera al hacer la descarga de los datos desde el repositorio y que contiene todos los metadatos relevantes, entre ellos, el propio nombre del archivo de datos. Podemos ver la información descriptiva de cada campo, a través de:
+
+```{r}
+ipums_view(ddi)
+```
+
+Que genera un html con al información de cada uno de los campos y que incluiremos en la información de la práctica como "Data_dictionary.html".
+
+Para ver el nombre y resumen del contenido de cada campo, hacemos:
+
+```{r}
+ddi$var_info
+```
+Y para ver el rango de valores que puede tomar cada uno de los campos, haríamos, por ejemplo para la variable METRO:
+
+```{r}
+ipums_val_labels(ddi,METRO)
+```
+
+Uno de los problemas de este tipo de información es que el formato de los campos a menudo no puede tratarse directamente como un factor en R. Por ejemplo, en el caso de la variable METRO:
+
+```{r}
+str(data$METRO)
+```
+
+Vemos que el formato es del tipo int+lbl, ya que contiene información númerica, pero también una etiqueta descriptiva. Este será uno de los elementos que tendremos que tener en cuenta a la hora de tratar cada uno de los campos. 
+
+Además de esto también será necesario llevar a cabo reagrupaciones, en el caso de que los valores sean demasiado detallados para una visualización.
+
+# Tratamiento y limpieza de los datos
+
+En primer lugar, transformamos el formato de los datos que lo requieran y calificamos como missings los valores que indican que no contamos con información de la variable:
+
+```{r}
+data_tr <- data.frame(data)
+data_tr$CASEID <- as.character(data_tr$CASEID)
+data_tr$REGION <- as_factor(data_tr$REGION)
+data_tr$STATEFIP_ID <- zap_labels(data$STATEFIP)
+data_tr$STATEFIP <- as_factor(data$STATEFIP)
+data_tr$METRO <- lbl_na_if(data_tr$METRO, ~.val==5 ) %>%
+  as_factor()
+data_tr$FAMINCOME <- lbl_na_if(data_tr$FAMINCOME, ~.val %in% c(996,997,998) ) %>%
+  as_factor(ordered = TRUE)
+data_tr$HH_SIZE <- lbl_na_if(data_tr$HH_SIZE, ~.val %in% c(999) ) %>%
+  zap_labels()
+data_tr$HHTENURE <- lbl_na_if(data_tr$HHTENURE, ~.val %in% c(99) ) %>%
+  as_factor()
+data_tr$HH_CHILD <- lbl_na_if(data_tr$HH_CHILD, ~.val %in% c(99) ) %>%
+  as_factor()
+data_tr$HH_NUMKIDS <- lbl_na_if(data_tr$HH_NUMKIDS, ~.val %in% c(99) ) %>%
+  as_factor()
+data_tr$KIDWAKETIME <- chron(times = na_if(data_tr$KIDWAKETIME, "99999999")) 
+#En esta variable hay otros valores raros, como 28:00:00, que también se calificarán como NA:
+data_tr$KIDBEDTIME <- chron(times = na_if(data_tr$KIDBEDTIME, "99999999"))
+data_tr$LILENO <- zap_labels(data_tr$LILENO)
+data_tr$AGE <- lbl_na_if(data_tr$AGE, ~.val %in% c(996, 997, 999) ) %>%
+  zap_labels()
+data_tr$SEX <- lbl_na_if(data_tr$SEX, ~.val %in% c(999) ) %>%
+  as_factor()
+data_tr$RACE <- lbl_na_if(data_tr$RACE, ~.val %in% c(599,9999) ) %>%
+  as_factor()
+data_tr$HISPAN <- lbl_na_if(data_tr$HISPAN, ~.val %in% c(9999) ) %>%
+  as_factor()
+data_tr$ASIAN <- lbl_na_if(data_tr$ASIAN, ~.val %in% c(999) ) %>%
+  as_factor()
+data_tr$MARST <- lbl_na_if(data_tr$MARST, ~.val %in% c(99) ) %>%
+  as_factor()
+data_tr$YRIMMIG <- lbl_na_if(data_tr$YRIMMIG, ~.val %in% c(998,999) ) %>%
+  as_factor(ordered = TRUE)
+data_tr$CITIZEN <- lbl_na_if(data_tr$CITIZEN, ~.val %in% c(999) ) %>%
+  as_factor()
+data_tr$BPL <- lbl_na_if(data_tr$BPL, ~.val %in% c(96000,999999) ) %>%
+  as_factor()
+data_tr$MBPL <- lbl_na_if(data_tr$MBPL, ~.val %in% c(96000,999999) ) %>%
+  as_factor()
+data_tr$FBPL <- lbl_na_if(data_tr$FBPL, ~.val %in% c(96000,999999) ) %>%
+  as_factor()
+data_tr$GENHEALTH <- lbl_na_if(data_tr$GENHEALTH, ~.val %in% c(96,97,99) ) %>%
+  as_factor(ordered = TRUE)
+data_tr$BMI <- lbl_na_if(data_tr$BMI, ~.val %in% c(9998,9999) ) %>%
+  zap_labels()
+data_tr$EDUC <- lbl_na_if(data_tr$EDUC, ~.val %in% c(999)) %>%
+  as_factor()
+data_tr$EMPSTAT <- lbl_na_if(data_tr$EMPSTAT, ~.val %in% c(999)) %>%
+  as_factor()
+data_tr$MULTJOBS <- lbl_na_if(data_tr$MULTJOBS, ~.val %in% c(999)) %>%
+  as_factor()
+data_tr$CLWKR <- lbl_na_if(data_tr$CLWKR, ~.val %in% c(99)) %>%
+  as_factor()
+data_tr$OCC2 <- lbl_na_if(data_tr$OCC2, ~.val %in% c(9999)) %>%
+  as_factor()
+data_tr$RETIRED <- lbl_na_if(data_tr$RETIRED, ~.val %in% c(98,99)) %>%
+  as_factor()
+data_tr$DIFFANY <- lbl_na_if(data_tr$DIFFANY, ~.val %in% c(99)) %>%
+  as_factor()
+```
+Agruparemos también ciertas categorías que están abiertas con demasiado detalle. De esta forma reduciremos la granularidad en los casos que veamos necesarios:
+
+- Variable numérica AGE (edad):
+
+```{r}
+data_tr["AGE_GROUP"] = cut(data_tr$AGE, breaks = c(0,21,30,50,65,80,100), labels=c("<21","21-30","30-50","50-65","65-80",">80"))
+```
+
+- Variables categóricas EDUC (nivel educativo), CLRWK (tipo de trabajador) y FAMINCOME (ingresos anuales a nivel familia):
+
+```{r}
+data_tr <- data_tr %>%
+  mutate(EDUC_GROUP = fct_collapse(EDUC,
+                              No_school = c("Less than 1st grade"),
+                              School = c("1st, 2nd, 3rd, or 4th grade", "5th or 6th grade","7th or 8th grade","9th grade","10th grade","11th grade","12th grade - no diploma"),
+                              High_school = c("High school graduate - GED", "High school graduate - diploma", "Some college but no degree"),
+                              Univ_degree = c("Associate degree - occupational vocational","Associate degree - academic program","Bachelor's degree (BA, AB, BS, etc.)"),
+                              Prof_degree = c("Professional school degree (MD, DDS, DVM, etc.)"),
+                              Post_univ =c("Master's degree (MA, MS, MEng, MEd, MSW, etc.)","Doctoral degree (PhD, EdD, etc.)")),
+         
+         CLWKR_GROUP = fct_collapse(CLWKR,
+                              Government = c("Government, federal", "Government, state", "Government, local")),
+
+         FAMINCOME_GROUP = fct_collapse(FAMINCOME,
+                                       L5.000 = c("Less than $5,000"),
+                                       M5.000_L15.000 = c("$5,000 to $7,499","$7,500 to $9,999","$10,000 to $12,499","$12,500 to $14,999"),
+                                       M15.000_L30.000 = c("$15,000 to $19,999","$20,000 to $24,999","$25,000 to $29,999"),
+                                       M30.000_L50.000 = c("$30,000 to $34,999","$35,000 to $39,999","$40,000 to $49,999"),
+                                       M50.000_L75.000 = c("$50,000 to $59,999","$60,000 to $74,999"),
+                                       M75.000_L150.000 = c("$75,000 to $99,999","$100,000 to $149,999"),
+                                       M150.000 = c("$150,000 and over")))
+```
+
+Como el nivel de detalle del tipo de actividades es elevado, también crearemos una categoría de ACT_OTHERS, donde agruparemos el tiempo que no se dedica a las actvidades que más tiempo consumen, como dormir, trabajar o recibir formación, cuidar de otros familiares, comer o tiempo de ocio:
+
+```{r}
+col_others=c("ACT_CARENHH", "ACT_GOVSERV", "ACT_HHSERV","ACT_EDUC","ACT_FOOD" ,"ACT_PHONE", "ACT_PROFSERV", "ACT_PURCH","ACT_RELIG","ACT_VOL","ACT_SPORTS","ACT_TRAVEL")
+col_main = c("ACT_CAREHH","ACT_HHACT","ACT_PCARE","ACT_SOCIAL","ACT_WORK","ACT_OTHERS") 
+data_tr$ACT_OTHERS<-rowSums(data_tr[,col_others],na.rm = TRUE)
+```
+
+Por último, eliminamos la información posterior a 2019, para que no altere demasiado los datos del estudio:
+
+```{r}
+data_tr <- data_tr %>% 
+  filter(YEAR<=2019)
+```
+
+
+# Análisis de los datos
+
+En primer lugar podemos almacenar las variables sobre las que llevaremos a cabo el análisis. Serán aquellas que representan el tiempo dedicado a distintas actividades.
+
+```{r}
+ACT_VAR <- c("ACT_CAREHH", "ACT_CARENHH", "ACT_EDUC", "ACT_FOOD", "ACT_GOVSERV", "ACT_HHACT", "ACT_HHSERV", "ACT_PCARE", "ACT_PHONE", "ACT_PROFSERV", "ACT_PURCH", "ACT_RELIG", "ACT_SOCIAL", "ACT_SPORTS", "ACT_TRAVEL", "ACT_VOL", "ACT_WORK","ACT_OTHERS")
+```
+
+## Tiempos medios por actividad y grupo
+
+Seleccionamos una serie de variables para las que nos interesa contar con la información del tiempo medio diario que dedican a cada actividad ciertos grupos en los que podemos dividir la población:
+
+```{r}
+var_group <- c(expr(AGE_GROUP), expr(SEX), expr(FAMINCOME_GROUP), expr(HHTENURE), expr(HH_CHILD),
+               expr(MARST), expr(CITIZEN), expr(GENHEALTH), expr(EDUC_GROUP), expr(CLWKR_GROUP),
+               expr(FAMINCOME_GROUP), expr(EMPSTAT), expr(RETIRED),
+               expr(MULTJOBS),expr(DIFFANY),expr(STATEFIP_ID))
+```
+
+Ahora obtenemos el valor medio de tiempo diario dedicado a cada actividad. Es importante tener en cuenta, por un lado, que estos valores medios incluyen todos los días de la semana, es decir, tanto días laborables como fines de semana. Por otro lado, para que los datos medios sean correctos es necesario aplicar el peso recogido en la variable "WT06", para corregir la sobrerrepresentación de ciertos tipos de encuestados y, sobre todo, de ciertos días de la semana frente a otros (para más detalle se puede consultar el diccionario de datos incluido).
+
+```{r}
+for (i in seq_along(var_group)) {
+  assign(paste0("Data_", var_group[[i]]), data_tr %>% group_by(!!var_group[[i]]) %>%
+  summarise_at(vars(all_of(ACT_VAR)), list(~weighted.mean(., WT06, na.rm = TRUE))))
+}
+```
+
+Para el análisis y visualizaciones posteriores también nos interesará generar una tabla a nivel de Edad y Género:
+
+```{r}
+Data_SEX_AGE_GROUP<-data_tr %>% group_by(AGE_GROUP, SEX) %>%
+  summarise_at(vars(all_of(ACT_VAR)), list(~weighted.mean(., WT06, na.rm = TRUE)))
+```
+
+Así como otra, a nivel de Edad y Estado de salud:
+
+```{r}
+Data_GENHEALTH_AGE_GROUP<-data_tr %>% group_by(AGE_GROUP, GENHEALTH) %>%
+  summarise_at(vars(all_of(ACT_VAR)), list(~weighted.mean(., WT06, na.rm = TRUE)))
+```
+
+
+# Visualización de datos
+
+Una vez que hemos tratado los datos y extraido aquellos que nos parecen más adecuados para plantear nuestro análisis visual, los estudiaremos partiendo de la relación entre ciertas características de la población y la forma en la que emplean su tiempo.
+
+## Edad
+
+La edad es una de las variables que, como era de esperar, más influyen en la forma en la que gente ocupa su tiempo.
+
+En primer lugar adaptamos el set de datos para su representación:
+```{r}
+Data_AGE_GROUP_pl <- Data_AGE_GROUP %>%
+  pivot_longer(!AGE_GROUP, names_to = "Tipo_Actividad", values_to = "Minutos")
+```
+
+Llevamos a cabo una representación del reparto entre el tiempo de trabajo y de ocio:
+```{r}
+df_aux_pl <- filter(Data_AGE_GROUP_pl, Tipo_Actividad %in% c("ACT_SOCIAL","ACT_WORK"))
+ggplot(data=df_aux_pl, aes(x=AGE_GROUP, y=Minutos, group = Tipo_Actividad)) +
+  geom_line(aes(linetype=Tipo_Actividad, color = Tipo_Actividad)) +
+  geom_point(aes(shape=Tipo_Actividad, color = Tipo_Actividad)) +
+  labs(x = "Grupo de edad (años)", y = "Tiempo (min)",
+              title = "Relación, por grupo de edad, entre el tiempo de trabajo y ocio diario")+
+  theme_minimal()
+```
+
+Como vemos la relación entre la cantidad de tiempo de trabajo y ocio siguen una evolución inversa a lo largo de nuestra vida. Alcanzándose un máximo de tiempo dedicado al trabajo alrededor de los 30-50 años, que coincide con la menor disponibilidad de tiempo de ocio.
+
+Si llevamos a cabo un análisis similar para ver la evolución del tiempo dedicado al cuidado personal (higiene, dormir, etc.), frente al tiempo de trabajo, observamos lo siguiente:
+
+```{r}
+df_aux_pl <- filter(Data_AGE_GROUP_pl, Tipo_Actividad %in% c("ACT_PCARE","ACT_WORK"))
+ggplot(data=df_aux_pl, aes(x=AGE_GROUP, y=Minutos, group = Tipo_Actividad)) +
+  geom_line(aes(linetype=Tipo_Actividad, color = Tipo_Actividad)) +
+  geom_point(aes(shape=Tipo_Actividad, color = Tipo_Actividad)) +
+  labs(x = "Grupo de edad (años)", y = "Tiempo (min)",
+              title = "Relación, por grupo de edad, entre el tiempo de trabajo y de cuidado personal diario")+
+  theme_minimal()
+```
+
+De nuevo, observamos que el tiempo de trabajo sigue un desarrollo inverso respecto a al tiempo de descanso y cuidado personal, como ocurría con el tiempo de ocio, si bien con una relación menos marcada. Algo que, por otro lado, es lógico, ya que el tiempo de ocio es más fácilmente reducible que el tiempo de descanso o cuidado propio.
+
+## Sexo:
+
+Analizaremos a continuación las diferencias entre géneros a la hora de emplear nuestro tiempo diario.
+
+De nuevo, adaptamos los datos para su representación gráfica:
+```{r}
+Data_SEX_pl <- Data_SEX %>%
+  pivot_longer(!SEX, names_to = "Tipo_Actividad", values_to = "Minutos")
+```
+
+Como ya comentamos, se han escogido una serie de actividades básicas: descanso, trabajo, actividades del hogar (ACT_HHACT), y cuidado de otros familiares (ACT_CAREHH), como pudieran ser los hijos, para analizar las diferencias:
+```{r}
+df_aux_pl <- filter(Data_SEX_pl, Tipo_Actividad %in% col_main)
+ggplot(df_aux_pl, aes(x = SEX, y = Minutos))+
+  geom_col(position = "fill", aes(fill = Tipo_Actividad)) + coord_flip()+
+  labs(x = "Género", y = "Tiempo del día (%)",
+       title = "Reparto de las principales tareas del día, entre hombres y mujeres")+
+  theme_minimal()
+```
+
+Partiendo de los datos generales vemos que hay claras diferencias. Los hombres emplean más tiempo al trabajo (ACT_WORK) y ligeramente más al ocio o relaciones sociales (ACT_SOCIAL) que las mujeres. Estás, por otro lado, dedican algo más tiempo al cuidado personal, pero principalmente a las tareas del hogar y al cuidado de otros familiares.
+
+Podríamos analizar si estas diferencias se observan en todos los rangos de edad:
+
+```{r}
+# Adaptamos los datos:
+Data_SEX_AGE_pl <- Data_SEX_AGE_GROUP %>%
+  pivot_longer(starts_with("ACT"), names_to = "Tipo_Actividad", values_to = "Minutos")
+
+# Filtramos ciertas variables características y las representamos:
+df_aux_pl <- filter(Data_SEX_AGE_pl, Tipo_Actividad %in% c("ACT_WORK","ACT_CAREHH","ACT_HHACT"))
+ggplot(df_aux_pl, aes(x = SEX, y = Minutos))+
+  geom_col( aes(fill = Tipo_Actividad)) +
+  labs(x = "Género", y = "Minutos",
+       title = "Evolución del tiempo de trabajo, cuidados y tareas domésticas por edad y género")+
+          facet_grid(~AGE_GROUP)+
+  theme_minimal()
+```
+
+En este caso vemos que aunque el tiempo dedicado a las tareas de trabajo, tareas domésticas y cuidados varían a lo largo de una vida media, el reparto desigual se observa de forma similar en todos los sectores poblacionales por edad.
+
+## Renta familiar
+
+Vamos a ver ahora de qué forma puede influir la distribución de ingresos en la familia para afectar a la forma en la que empleamos el tiempo, o viceversa. Nos fijaremos en primer lugar en la relación con el tiempo de trabajo que, como hemos visto, resulta muy buen indicador de las características del encuestado:
+
+```{r}
+#Adaptamos los datos para su representación:
+Data_FAMINCOME_PL <- Data_FAMINCOME_GROUP %>%
+  pivot_longer(starts_with("ACT"), names_to = "Tipo_Actividad", values_to = "Minutos")
+
+# Filtramos y representamos los datos:
+df_aux_pl <- filter(Data_FAMINCOME_PL, Tipo_Actividad %in% c("ACT_WORK"), !is.na(FAMINCOME_GROUP))
+ggplot(df_aux_pl, aes(x=FAMINCOME_GROUP, y=Minutos)) +
+  geom_segment( aes(x=FAMINCOME_GROUP, xend=FAMINCOME_GROUP, y=0, yend=Minutos),color="skyblue")+
+  geom_point(color="blue", size=3, alpha=0.8) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(x = "Ingresos Familiares", y = "Minutos",
+       title = "Relación entre la categoría de ingresos y el tiempo dedicado al trabajo") +
+  theme_minimal()
+```
+
+En este caso vemos un resultado que era esperable. Generalmente un mayor tiempo dedicado al trabajo, está relacionado con unos mayores ingresos en la unidad familiar. Sin embargo, no debemos olvidar que esto sólo son valores medios, si queremos tener más información sobre este fenómeno podemos recuerrir a los datos originales, que tienen un mayor nivel de desagregación. 
+
+Representaremos a continuación la distribución de tiempo trabajado (no solo la media), en función del grupo de renta al que pertenezca la familia:
+
+
+```{r}
+#Adaptamos los datos desagregados:
+data_income <- data_tr  %>% filter(!is.na(FAMINCOME_GROUP)) %>% 
+  select(FAMINCOME_GROUP, ACT_WORK)
+
+Data_INCOME_PL <- data_income %>%
+  pivot_longer(ACT_WORK, names_to = "Tipo_Actividad", values_to = "Minutos")
+
+# Representamos la distribución de minutos dedicados a trabajar
+p <- ggplot(Data_INCOME_PL, aes(x=FAMINCOME_GROUP, y=Minutos, fill=FAMINCOME_GROUP, color=FAMINCOME_GROUP)) +
+    geom_violin(width=5, size=1)+
+    coord_flip() + labs(x = "Grupo de ingresos", y = "Minutos",title = "Tiempo de trabajo en distintos grupos de renta")+
+    theme_minimal() + theme(legend.position = 'none')
+
+# Se generaba un warning por que hay solapamiento en la base del violin plot
+suppressWarnings(print(p)) 
+```
+
+En primer lugar vemos cómo la estructura es similar en todos los grupos de renta, con una gran acumulación en la zona cercana a cero y luego otro máximo en torno a la jornada laboral media. Esto se debe a que, como ya señalamos la variable es el nivel de riqueza por hogar, no el nivel de ingresos de cada encuestado, es decir, se incluyen datos de gente que aún no trabaja o de gente ya retirada, con reducida actividad laboral. 
+
+En este caso vemos que los menores ingresos están principalmente relacionados con el peso de la población que no trabaja, es decir, la gente en paro, o de familiar con muchos miembros que no pueden trabajar, por el motivo que sea, son los que concentran una menor riqueza. Frente al grupo con mayor renta que se asocia a una distribución con menor cantidad de población en el grupo de gente que no trabaja. Sin embargo, dentro del área representativa de la gente que sí trabaja, en la zona central de las distribuciones, vemos que las diferencias en la jornada no son demasiado relevantes. 
+
+Esto parece permitirnos concluir que las familias con mayores rentas no son aquellas donde la gente trabaja más tiempo, sino aquellas donde hay más miembros con acceso a un trabajo a jornada completa. 
+Podemos ahora ver de qué forma distribuye el tiempo la población con más renta, frente a la de menores ingresos, antendiendo a ciertas variables sobre su estilo de vida:
+
+```{r message=FALSE, warning=FALSE}
+df_aux_pl <- filter(Data_FAMINCOME_PL,Tipo_Actividad %in% c("ACT_FOOD","ACT_SPORTS","ACT_SOCIAL","ACT_RELIG"), FAMINCOME_GROUP %in% c("M5.000_L15.000","M150.000"), !is.na(FAMINCOME_GROUP))
+treemap(df_aux_pl,
+            index=c("FAMINCOME_GROUP","Tipo_Actividad"),
+            vSize="Minutos",
+            type="index",
+        fontsize.labels=c(15,12), 
+        bg.labels=c("transparent"),
+        align.labels=list(
+        c("center", "center"), 
+        c("right", "bottom")
+        ), 
+            )
+```
+
+Como vemos el grupo con unas rentas entre 5.000 y 15.000 dólares dedican más tiempo a las actividades sociales y al ocio (ACT_SOCIAL),que el grupo de rentas altas, que emplean más tiempo en comer, y hacer deporte. También se observa que la gente de menores renta en USA dedican más tiempo a actividades religiosas que los de rentas más altas.
+
+## Estado de salud
+
+A continuación hemos analizado la relación entre el estado de salud y el tiempo dedicado a distintas actividades. 
+
+En primer lugar hemos seleccionado el conjunto de población de 50-65 años, para evitar el efecto que podría tener incluir edades muy distintas, que, en general, estarán relacionadas con el estado de salud.
+
+```{r}
+# Filtramos los datos y los adaptamos para la representación
+Data_Genhealth_Age_pl <- Data_GENHEALTH_AGE_GROUP %>% filter(AGE_GROUP %in% c("50-65"),
+                                                             !is.na(GENHEALTH), GENHEALTH %in%
+                                                               c("Excellent", "Poor")) %>%
+  pivot_longer(starts_with("ACT"), names_to = "Tipo_Actividad", values_to = "Minutos") %>%
+  filter(Tipo_Actividad %in% col_main)
+```
+
+El reparto del tiempo diario en ciertas tareas generales es el siguiente:
+
+```{r}
+ggplot(Data_Genhealth_Age_pl, aes(x="", y=Minutos, fill=Tipo_Actividad)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) + facet_grid(~GENHEALTH)+ labs(x = "Grupo de ingresos", y = "Minutos",title = "Comparativa del tiempo dedicado a distintas tareas en función del estado de salud")+
+  theme_void()
+```
+
+Como vemos la gente que considera que tiene una salud excelente dispone de menos tiempo libre, y dedica menos tiempo a sus cuidados propios, frente a la gente con un mal estado de salud. Por otro lado esta diferencia se compensa con un mayor tiempo medio dedicado al trabajo por parte de la gente con un buen estado de salud, frente a la que se encuentra en una peor condición.
+
+Como hemos visto anteriormente la relación entre tiempo de trabajo y nivel de riqueza era clara. Así que vamos a ver si el efecto de un peor estado de salud tiene una repercusión sobre el nivel de riqueza, o también al contrario, si un mayor nivel de riqueza repercute en un buen estado de salud.
+
+Creamos una tabla de frecuencias
+```{r include=FALSE}
+freq_table<-as.data.frame(CrossTable(data_tr$GENHEALTH, data_tr$FAMINCOME_GROUP))
+```
+
+Y representamos un mapa de calor para ver la relación entre estos dos aspectos:
+```{r}
+ggplot(freq_table, aes(t.x,t.y))+
+  geom_tile(aes(fill=prop.col.Freq))+
+  scale_fill_gradient(low = 'white',high = 'steelblue')+ labs(x = "Nivel de salud", y = "Nivel de ingresos",title = "Relación entre el estado de salud y el nivel de renta (50-65 años)") + theme_minimal()
+```
+
+Como era de esperar vemos que en las rentas más altas de EEUU se observa unas mejores condiciones de salud que entre las rentas más bajas. El número de motivos detrás de esto puede ser muy variado, pero hemos visto que a través del análisis de la distribución del tiempo también se pueden llegar a detectar fenómenos que en principio no tendría por qué tener una relación directa, como es caso de la relación entre nivel de renta y salud.
+
+
+## Diferencias geográficas:
+
+Por último, y partiendo también de los datos geógraficos de ["IPUMS NHGIS"](https://www.nhgis.org/), podemos obtener un mapa del reparto de tiempo en función de la situación geográfica:
+
+```{r}
+#Cargamos el mapa a nivel estados de USA que hemos obtenido de IPUMS NHGIS:
+shape_data <- read_ipums_sf("shape/")
+```
+
+Tratamos la información del mapa y la combinamos con los valores medios que hemos obtenid a nivel de estado:
+
+```{r}
+shape_data$STATEFIP_ID <- as.integer(shape_data$STATEFP)
+geo_data <- ipums_shape_inner_join(
+  Data_STATEFIP_ID,
+  shape_data,
+  by = "STATEFIP_ID"
+)
+```
+Representamos el mapa de reparto de tiempo dedicado al trabajo en cada estado:
+```{r}
+ggplot(geo_data) + geom_sf(aes(fill = ACT_WORK), color = NA) + scale_fill_viridis_c()+ ggtitle("Tiempo medio diario dedicado al trabajo en cada estado de USA") + theme_void()
+```
+
+Los resultados muestran que hay determinadas áreas, por ejemplo alrededor de la zona de las Grandes Llanuras y del Medio Oeste, donde se observa una mayor proporción de tiempo diario dedicada al trabajo.
+
+Como hemos venido viendo el tiempo de ocio suele mantener una relación opuesta al tiempo de trabajo, veremos si aquí también observamos la misma relación:
+
+```{r}
+ggplot(geo_data) + geom_sf(aes(fill = ACT_SOCIAL), color = NA) + scale_fill_viridis_c() + ggtitle("Tiempo medio diario dedicado a las relaciones sociales en cada estado de USA") + theme_void()
+```
+
+Como era de esperar, los resultados son aproximadamente los inversos a los referidos al tiempo dedicado a la actividad laboral.
+
+Vemos, por tanto, que la situación geográfica también puede jugar un papel importante a la hora de analizar los patrones temporales de la población. No obstante, convendría analizar con más detalle, su podría haber otras variables, como la distribución de edades por estado, o la rente per capita, que pudieran estar de detrás de estas diferencias, y que fueran más influyentes que la situación gográfica.
+
+# Conclusiones
+
+Como hemos podido ver, las representaciones gráficas de los datos del reparto del tiempo de la población de los EEUU nos ha permitido obtener cierta información acerca de cómo emplea su tiempo la gente, así como qué factores pueden estar detrás de las diferencias observadas.
+
+En primer lugar hemos visto que la edad es un factor fundamental para prever cómo alguién utilizará su tiempo diario, ya que afecta al reparto tiempo de ocio vs. tiempo de trabajo. Que, como hemos visto a lo largo de todo el estudio, son las variables fundamentales a la hora de analizar el uso del tiempo.
+
+Por otro lado, también hemos visto como el uso del tiempo entre distintos géneros no es igualitario. Los hombres tienden a emplear más tiempo trabajando, mientras que las mujeres se dedican con mayor frecuencia a las tareas del hogar y al cuidado de los hijos, u otros  Estas diferencias se han observado en todos los rangos de edad.
+
+La renta por unidad familiar también supone una variable relevante a la hora de observar diferencias en el uso del tiempo. En primer lugar hemos visto que, aunque un mayor tiempo de trabajo suele ir asociado con una mayor renta, en general esta diferencia proviene de la mera posibilidad de trabajar frente a no hacerlo, más que a que las mayores rentas correspondan a la gente con jornadas laborales más largas.
+
+Respecto a la forma en la reparten su tiempo libre, que no es puramente de ocio, también se ha observado que la población con mayor renta dedica más tiempo a sus comidas y a hace deporte, frente a la población de menor renta que, en cambio, tiene más tiempo de ocio y es más religiosa, al menos en EEUU.
+
+También se ha podido ver la forma en la que el estado de salud afecta al tiempo diario. Una mala salud afecta al tiempo de trabajo medio, que se ve fuertemente reducido y, con ello, también se encuentra relacionado con una menor renta. Así se ha podido ver cómo los mayores niveles de ingresos suelen ir acompañados de mejores niveles también de salud, al menos en el grupo de 50-65 años.
+
+Por último se ha podido ver que el binomio tiempo de trabajo vs. de ocio también se distribuye de forma desigual en los distintos estados de EEUU. En particular se ha observado una mayor dedicación a la actividad laboral en el Medios Oeste y la zona de las Grandes Llanuras, que en otras zonas del sur o del este del país.
+
+
+# Referencias
+
+- Datos empleados de ATUS:
+Sandra L. Hofferth, Sarah M. Flood, Matthew Sobek and Daniel Backman. American Time Use Survey Data Extract Builder: Version 2.8 [dataset]. College Park, MD: University of Maryland and Minneapolis, MN: IPUMS, 2020. https://doi.org/10.18128/D060.V2.8Â
+
+- Datos empleados de NHGIS:
+Steven Manson, Jonathan Schroeder, David Van Riper, Tracy Kugler, and Steven Ruggles. IPUMS National Historical Geographic Information System: Version 16.0 [dataset]. Minneapolis, MN: IPUMS. 2021. http://doi.org/10.18128/D050.V16.0
